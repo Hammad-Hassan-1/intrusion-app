@@ -66,63 +66,6 @@ except Exception as e:
 # ------------------------------------------------------------
 if "history" not in st.session_state:
     st.session_state.history = {}
-# ------------------------------------------------------------
-#  Session state
-# ------------------------------------------------------------
-if "history" not in st.session_state:
-    st.session_state.history = {}
-
-# ------------------------------------------------------------
-#  Attack-category mapping + live hover plot
-# ------------------------------------------------------------
-attack_map = {
-    'neptune':'DoS','smurf':'DoS','back':'DoS','teardrop':'DoS',
-    'pod':'DoS','land':'DoS','apache2':'DoS','mailbomb':'DoS',
-    'processtable':'DoS','udpstorm':'DoS',
-    'portsweep':'Probe','satan':'Probe','ipsweep':'Probe',
-    'nmap':'Probe','mscan':'Probe','saint':'Probe',
-    'warezclient':'R2L','warezmaster':'R2L','guess_passwd':'R2L',
-    'ftp_write':'R2L','imap4':'R2L','phf':'R2L','multihop':'R2L',
-    'spy':'R2L','httptunnel':'R2L','ps':'R2L','sqlattack':'R2L',
-    'snmpgetattack':'R2L','snmpguess':'R2L',
-    'buffer_overflow':'U2R','loadmodule':'U2R','rootkit':'U2R',
-    'perl':'U2R','xterm':'U2R',
-}
-
-# Ensure we have a dataframe
-if "df" not in st.session_state:
-    st.session_state.df = pd.read_csv("kdd_test.csv")
-
-st.session_state.df['category'] = (
-    st.session_state.df['labels']
-    .map(lambda x: attack_map.get(x, 'Normal'))
-)
-
-N = st.sidebar.slider("Latest N samples to plot", 50, len(st.session_state.df), 500)
-
-tail = st.session_state.df.tail(N).copy()
-fig = px.scatter(
-    tail,
-    x=tail.index,
-    y='duration',
-    color='category',
-    hover_data={
-        'labels': True,
-        'category': True,
-        'protocol_type': True,
-        'service': True,
-        'flag': True,
-    },
-    color_discrete_map={
-        'Normal':'#1f77b4',
-        'DoS':'#d62728',
-        'Probe':'#ff7f0e',
-        'R2L':'#9467bd',
-        'U2R':'#8c564b'
-    },
-    height=500
-)
-st.plotly_chart(fig, use_container_width=True)
 
 # ------------------------------------------------------------
 #  Sidebar navigation (no dark-mode, no selector)
@@ -204,7 +147,9 @@ else:
     data_name = st.sidebar.selectbox("Dataset", list(st.session_state.history.keys()))
     df = st.session_state.history[data_name]
 
-
+    attack_filter = st.sidebar.multiselect(
+        "Attack type", ["normal", "attack"], default=["normal", "attack"]
+    )
     proto_filter = st.sidebar.multiselect(
         "Protocol", df["protocol_type"].unique(), df["protocol_type"].unique()
     )
@@ -276,7 +221,7 @@ else:
         )
         st.plotly_chart(bar, use_container_width=True)
 
-       # ------------------------------------------------------------------
+     # ------------------------------------------------------------------
     #  LIVE INTRUSION FLUCTUATION  (with Pause/Resume)
     # ------------------------------------------------------------------
     if live_plot_toggle:
@@ -409,6 +354,19 @@ else:
                 )
                 live_plot.plotly_chart(fig, use_container_width=True)
                 sleep(0.5)
+    # 4) Interactive duration histogram
+    st.subheader("Connection Duration (interactive)")
+    hist = px.histogram(
+        filtered,
+        x="duration",
+        color="Predicted_Label",
+        marginal="box",
+        hover_data=filtered.columns,
+        nbins=50,
+        color_discrete_map={"normal": "green", "attack": "red"},
+    )
+    hist.update_layout(bargap=0.1)
+    st.plotly_chart(hist, use_container_width=True)
 
     # 5) Top-10 numeric correlation heatmap
     st.subheader("Top numeric feature correlations")
@@ -426,7 +384,7 @@ else:
         st.plotly_chart(heat, use_container_width=True)
 
     # 6) Feature importance
-    with st.expander("feature importance"):
+    with st.expander("Interactive feature importance"):
         n = st.slider("Top N features", 5, 30, 15)
         fi_df = (
             pd.DataFrame(
