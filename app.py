@@ -142,11 +142,76 @@ elif page == "📤 Upload":
 # ------------------------------------------------------------
 #  DASHBOARD PAGE
 # ------------------------------------------------------------
+# ------------------------------------------------------------
+#  DASHBOARD PAGE
+# ------------------------------------------------------------
 else:
     st.header("📊 Intrusion Detection Dashboard")
+
+    # ---------------------------------------------------------
+    #  DUMMY DASHBOARD when no data is available
+    # ---------------------------------------------------------
     if not st.session_state.history:
-        st.info("No data uploaded yet. Go to Upload page first.")
-        st.stop()
+        st.info("No data uploaded yet.  Upload a CSV to see live analytics.")
+
+        # --- Fake KPI row ---
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total records", "—")
+        col2.metric("Attack rate", "— %")
+        col3.metric("Dataset", "—")
+
+        # --- Fake charts ---
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.subheader("Attack vs Normal (placeholder)")
+            fig_dummy_pie = px.pie(
+                names=["normal", "attack"],
+                values=[75, 25],
+                hole=0.4,
+                color_discrete_map={"normal": "#2ca02c", "attack": "#d62728"},
+                title="Example distribution"
+            )
+            st.plotly_chart(fig_dummy_pie, use_container_width=True)
+
+        with col_b:
+            st.subheader("Attacks by Protocol (placeholder)")
+            dummy_bar = pd.DataFrame({
+                "protocol_type": ["tcp", "udp", "icmp"],
+                "count": [120, 80, 30]
+            })
+            fig_dummy_bar = px.bar(
+                dummy_bar,
+                x="count",
+                y="protocol_type",
+                orientation="h",
+                color="count",
+                color_continuous_scale="Reds",
+                title="Example protocol breakdown"
+            )
+            st.plotly_chart(fig_dummy_bar, use_container_width=True)
+
+        # --- Placeholder live plot ---
+        st.subheader("📉 Real-time Attack Detection (placeholder)")
+        dummy_ts = pd.DataFrame({
+            "step": range(20),
+            "label": np.random.choice([0, 1], 20, p=[0.8, 0.2])
+        })
+        fig_dummy_live = px.scatter(
+            dummy_ts,
+            x="step",
+            y="label",
+            color="label",
+            color_discrete_map={0: "green", 1: "red"},
+            title="Simulated live traffic"
+        )
+        fig_dummy_live.update_traces(marker=dict(size=10))
+        st.plotly_chart(fig_dummy_live, use_container_width=True)
+
+        st.stop()   # << skip the rest of the dashboard
+    # ---------------------------------------------------------
+    #  REAL DASHBOARD starts here (only runs after upload)
+    # ---------------------------------------------------------
+    ...
 
     # --- Sidebar filters ---
     st.sidebar.markdown("---")
