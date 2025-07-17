@@ -8,13 +8,10 @@ import pickle
 import plotly.express as px
 import plotly.graph_objects as go
 from time import sleep
-from datetime import datetime
-import base64
-import os
 
-# ------------------------------------------------------------------
+# ------------------------------------------------------------
 #  Page & theme config
-# ------------------------------------------------------------------
+# ------------------------------------------------------------
 st.set_page_config(
     page_title="IDS Pro",
     page_icon="🛡️",
@@ -22,20 +19,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ------------------------------------------------------------------
-#  Light / Dark toggle (simple CSS injection)
-# ------------------------------------------------------------------
-if "dark" not in st.session_state:
-    st.session_state.dark = False
-with st.sidebar:
-    if st.checkbox("Dark mode", value=st.session_state.dark):
-        st.session_state.dark = True
-    else:
-        st.session_state.dark = False
-
-# ------------------------------------------------------------------
+# ------------------------------------------------------------
 #  Cached helpers
-# ------------------------------------------------------------------
+# ------------------------------------------------------------
 @st.cache_resource
 def load_model():
     with open("rf_model.pkl", "rb") as f:
@@ -75,20 +61,21 @@ except Exception as e:
     st.error(f"Model files not found: {e}")
     st.stop()
 
-# ------------------------------------------------------------------
+# ------------------------------------------------------------
 #  Session state
-# ------------------------------------------------------------------
+# ------------------------------------------------------------
 if "history" not in st.session_state:
-    st.session_state.history = {}  # {upload_name: df}
+    st.session_state.history = {}
 
-# ------------------------------------------------------------------
-#  Multi-page navigation
-# ------------------------------------------------------------------
-page = st.sidebar.selectbox("Navigate", ["📊 Dashboard", "📤 Upload", "ℹ️ About"])
+# ------------------------------------------------------------
+#  Sidebar navigation (no dark-mode, no selector)
+# ------------------------------------------------------------
+st.sidebar.title("🛠️ IDS Pro")
+page = st.sidebar.radio("", ["📊 Dashboard", "📤 Upload", "ℹ️ About"], label_visibility="collapsed")
 
-# ------------------------------------------------------------------
-#  ABOUT
-# ------------------------------------------------------------------
+# ------------------------------------------------------------
+#  ABOUT PAGE
+# ------------------------------------------------------------
 if page == "ℹ️ About":
     st.header("About IDS Pro")
     st.markdown(
@@ -101,9 +88,9 @@ if page == "ℹ️ About":
     """
     )
 
-# ------------------------------------------------------------------
-#  UPLOAD
-# ------------------------------------------------------------------
+# ------------------------------------------------------------
+#  UPLOAD PAGE
+# ------------------------------------------------------------
 elif page == "📤 Upload":
     st.header("📤 Upload New Data")
     with st.form("upload_form"):
@@ -145,24 +132,21 @@ elif page == "📤 Upload":
         except Exception as e:
             st.exception(e)
 
-# ------------------------------------------------------------------
-#  DASHBOARD
-# ------------------------------------------------------------------
+# ------------------------------------------------------------
+#  DASHBOARD PAGE
+# ------------------------------------------------------------
 else:
     st.header("📊 Intrusion Detection Dashboard")
     if not st.session_state.history:
         st.info("No data uploaded yet. Go to Upload page first.")
         st.stop()
 
-    # Choose dataset
-    data_name = st.sidebar.selectbox(
-        "Select dataset", list(st.session_state.history.keys())
-    )
-    df = st.session_state.history[data_name]
-
-    # Sidebar filters
+    # --- Sidebar filters (only when Dashboard is active) ---
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filters")
+    data_name = st.sidebar.selectbox("Dataset", list(st.session_state.history.keys()))
+    df = st.session_state.history[data_name]
+
     attack_filter = st.sidebar.multiselect(
         "Attack type", ["normal", "attack"], default=["normal", "attack"]
     )
@@ -173,15 +157,15 @@ else:
         "Service", df["service"].unique(), df["service"].unique()
     )
 
+    search = st.sidebar.text_input("Search IP / flag")
+    live_plot_toggle = st.sidebar.checkbox("Live intrusion plot")
+
     # Apply filters
     filtered = df[
         (df["Predicted_Label"].isin(attack_filter))
         & (df["protocol_type"].isin(proto_filter))
         & (df["service"].isin(service_filter))
     ]
-
-    # Search
-    search = st.sidebar.text_input("Search IP / flag")
     if search:
         mask = (
             filtered.astype(str)
@@ -190,19 +174,19 @@ else:
         )
         filtered = filtered[mask]
 
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------
     #  KPI
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------
     kpi1, kpi2, kpi3 = st.columns(3)
     kpi1.metric("Total records", len(filtered))
     kpi2.metric("Attack rate", f"{(filtered['Predicted_Label_Num'].mean()*100):.1f}%")
     kpi3.metric("Dataset", data_name)
-    if (filtered["Predicted_Label_Num"].mean()) > 0.5:
+    if filtered["Predicted_Label_Num"].mean() > 0.5:
         st.warning("⚠️ High attack rate detected!")
 
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------
     #  PLOTS
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------
     col1, col2 = st.columns(2)
 
     # 1) Pie chart
@@ -237,10 +221,8 @@ else:
         )
         st.plotly_chart(bar, use_container_width=True)
 
-    # ------------------------------------------------------------------
-    #  LIVE INTRUSION FLUCTUATION
-    # ------------------------------------------------------------------
-    if st.checkbox("Live intrusion plot"):
+    # 3) Live Intrusion Fluctuation
+    if live_plot_toggle:
         st.subheader("📉 Real-time Attack Detection (Last 20 Connections)")
         live_plot = st.empty()
         window_size = 20
@@ -265,7 +247,18 @@ else:
                         showlegend=False,
                     )
                 )
-            # Markers
+
+            # Hover text with protocol
+            hover_text = [
+                f"Connection {idx}<br>"
+                f"Status: {'Attack' if y==1 else 'Normal'}<br>"
+                f"Protocol: {row.protocol_type}"
+                for idx, (y, row) in enumerate(zip(
+                    window_data['Predicted_Label_Num'],
+                    window_data.itertuples(index=False)
+                ))
+            ]
+
             fig.add_trace(
                 go.Scatter(
                     x=np.arange(len(window_data)),
@@ -276,10 +269,12 @@ else:
                         color=["red" if x == 1 else "green" for x in window_data["Predicted_Label_Num"]],
                         line=dict(width=1, color="DarkSlateGrey"),
                     ),
+                    text=hover_text,
+                    hovertemplate="%{text}<extra></extra>",
                     name="Status",
-                    hovertemplate="Connection %{x}<br>Status: %{y}<extra></extra>",
                 )
             )
+
             fig.update_layout(
                 xaxis=dict(range=[0, window_size - 1], title="Connection Sequence"),
                 yaxis=dict(range=[-0.1, 1.1], tickvals=[0, 1], ticktext=["Normal", "Attack"]),
@@ -290,8 +285,8 @@ else:
             live_plot.plotly_chart(fig, use_container_width=True)
             sleep(0.5)
 
-    # 3) Interactive duration histogram
-    st.subheader("Connection Duration")
+    # 4) Interactive duration histogram
+    st.subheader("Connection Duration (interactive)")
     hist = px.histogram(
         filtered,
         x="duration",
@@ -304,7 +299,7 @@ else:
     hist.update_layout(bargap=0.1)
     st.plotly_chart(hist, use_container_width=True)
 
-    # 4) Top-10 numeric correlation heatmap (safe)
+    # 5) Top-10 numeric correlation heatmap
     st.subheader("Top numeric feature correlations")
     num_cols = filtered.select_dtypes(include=np.number).columns
     top_num = (
@@ -319,7 +314,7 @@ else:
         )
         st.plotly_chart(heat, use_container_width=True)
 
-    # 5) Feature importance
+    # 6) Feature importance
     with st.expander("Interactive feature importance"):
         n = st.slider("Top N features", 5, 30, 15)
         fi_df = (
@@ -338,9 +333,10 @@ else:
             color_continuous_scale="Bluered",
         )
         st.plotly_chart(fi_plot, use_container_width=True)
-    # ------------------------------------------------------------------
-    #  DOWNLOADS
-    # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------
+    #  DOWNLOADS & RAW TABLE
+    # ------------------------------------------------------------
     csv = filtered.to_csv(index=False)
     st.sidebar.download_button(
         "⬇️ Download filtered CSV",
@@ -348,9 +344,5 @@ else:
         file_name="alerts.csv",
         mime="text/csv",
     )
-
-    # ------------------------------------------------------------------
-    #  RAW DATA TABLE
-    # ------------------------------------------------------------------
     with st.expander("Show raw data"):
         st.dataframe(filtered)
