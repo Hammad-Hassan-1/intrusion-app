@@ -97,13 +97,15 @@ elif page == "📤 Upload":
         try:
             df = pd.read_csv(uploaded_file)
 
-            # Ensure attack_category column exists (fallback if missing)
+            # ------- NEW SAFEGUARD -------
             if "attack_category" not in df.columns:
+                # create a fallback based on the optional `label` column, else "unknown"
                 df["attack_category"] = np.where(
                     df.get("label", "normal") == "normal",
                     "normal",
-                    df.get("label", "attack"),
+                    df.get("label", "unknown"),
                 )
+            # ------------------------------
 
             missing = [c for c in EXPECTED_FEATURES if c not in df.columns]
             if missing:
@@ -128,7 +130,6 @@ elif page == "📤 Upload":
                 else np.nan * np.ones_like(preds)
             )
 
-            # Enrich with predictions
             enriched = df.assign(
                 Predicted_Label=np.where(preds == 0, "normal", "attack"),
                 Predicted_Label_Num=preds,
@@ -138,7 +139,6 @@ elif page == "📤 Upload":
             st.success("File processed successfully!")
         except Exception as e:
             st.exception(e)
-
 # ------------------------------------------------------------
 #  DASHBOARD PAGE
 # ------------------------------------------------------------
