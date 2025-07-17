@@ -221,18 +221,32 @@ else:
         )
         st.plotly_chart(bar, use_container_width=True)
 
-    # 3) Live Intrusion Fluctuation
+       # ------------------------------------------------------------------
+    #  LIVE INTRUSION FLUCTUATION  (with Pause/Resume)
+    # ------------------------------------------------------------------
     if live_plot_toggle:
         st.subheader("📉 Real-time Attack Detection (Last 20 Connections)")
+
+        # --- Pause / Resume control ---
+        if "live_paused" not in st.session_state:
+            st.session_state.live_paused = False
+
+        col_pause, _ = st.columns([1, 5])
+        with col_pause:
+            if st.button("⏸️ Pause" if not st.session_state.live_paused else "▶️ Resume"):
+                st.session_state.live_paused = not st.session_state.live_paused
+                st.rerun()   # force redraw with new state
+
         live_plot = st.empty()
         window_size = 20
         total_points = len(filtered)
 
-        for i in range(window_size, min(total_points, 100)):
-            window_data = filtered.iloc[i - window_size : i]
-
+        # If paused, just show the latest static snapshot
+        if st.session_state.live_paused:
+            window_data = filtered.tail(window_size)
             fig = go.Figure()
-            # Animated line segments
+
+            # Lines
             for j in range(1, len(window_data)):
                 prev = window_data["Predicted_Label_Num"].iloc[j - 1]
                 curr = window_data["Predicted_Label_Num"].iloc[j]
@@ -248,7 +262,7 @@ else:
                     )
                 )
 
-            # Hover text with protocol
+            # Hover text
             hover_text = [
                 f"Connection {idx}<br>"
                 f"Status: {'Attack' if y==1 else 'Normal'}<br>"
@@ -274,7 +288,6 @@ else:
                     name="Status",
                 )
             )
-
             fig.update_layout(
                 xaxis=dict(range=[0, window_size - 1], title="Connection Sequence"),
                 yaxis=dict(range=[-0.1, 1.1], tickvals=[0, 1], ticktext=["Normal", "Attack"]),
@@ -283,21 +296,64 @@ else:
                 margin=dict(l=20, r=20, t=40, b=20),
             )
             live_plot.plotly_chart(fig, use_container_width=True)
-            sleep(0.5)
 
-    # 4) Interactive duration histogram
-    st.subheader("Connection Duration (interactive)")
-    hist = px.histogram(
-        filtered,
-        x="duration",
-        color="Predicted_Label",
-        marginal="box",
-        hover_data=filtered.columns,
-        nbins=50,
-        color_discrete_map={"normal": "green", "attack": "red"},
-    )
-    hist.update_layout(bargap=0.1)
-    st.plotly_chart(hist, use_container_width=True)
+        else:
+            # ---- ANIMATED LOOP ----
+            for i in range(window_size, min(total_points, 100)):
+                window_data = filtered.iloc[i - window_size : i]
+
+                fig = go.Figure()
+                # Lines
+                for j in range(1, len(window_data)):
+                    prev = window_data["Predicted_Label_Num"].iloc[j - 1]
+                    curr = window_data["Predicted_Label_Num"].iloc[j]
+                    color = "red" if curr == 1 else "green"
+                    fig.add_trace(
+                        go.Scatter(
+                            x=[j - 1, j],
+                            y=[prev, curr],
+                            mode="lines",
+                            line=dict(color=color, width=3),
+                            hoverinfo="skip",
+                            showlegend=False,
+                        )
+                    )
+
+                # Hover text
+                hover_text = [
+                    f"Connection {idx}<br>"
+                    f"Status: {'Attack' if y==1 else 'Normal'}<br>"
+                    f"Protocol: {row.protocol_type}"
+                    for idx, (y, row) in enumerate(zip(
+                        window_data['Predicted_Label_Num'],
+                        window_data.itertuples(index=False)
+                    ))
+                ]
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=np.arange(len(window_data)),
+                        y=window_data["Predicted_Label_Num"],
+                        mode="markers",
+                        marker=dict(
+                            size=8,
+                            color=["red" if x == 1 else "green" for x in window_data["Predicted_Label_Num"]],
+                            line=dict(width=1, color="DarkSlateGrey"),
+                        ),
+                        text=hover_text,
+                        hovertemplate="%{text}<extra></extra>",
+                        name="Status",
+                    )
+                )
+                fig.update_layout(
+                    xaxis=dict(range=[0, window_size - 1], title="Connection Sequence"),
+                    yaxis=dict(range=[-0.1, 1.1], tickvals=[0, 1], ticktext=["Normal", "Attack"]),
+                    showlegend=False,
+                    height=400,
+                    margin=dict(l=20, r=20, t=40, b=20),
+                )
+                live_plot.plotly_chart(fig, use_container_width=True)
+                sleep(0.5)
 
     # 5) Top-10 numeric correlation heatmap
     st.subheader("Top numeric feature correlations")
@@ -315,7 +371,7 @@ else:
         st.plotly_chart(heat, use_container_width=True)
 
     # 6) Feature importance
-    with st.expander("Interactive feature importance"):
+    with st.expander("feature importance"):
         n = st.slider("Top N features", 5, 30, 15)
         fi_df = (
             pd.DataFrame(
