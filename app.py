@@ -1,6 +1,3 @@
-# ---------------------------------------------------------
-#  PRODUCTION GRADE  Intrusion Detection System – Streamlit
-# ---------------------------------------------------------
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -68,7 +65,7 @@ if "history" not in st.session_state:
     st.session_state.history = {}
 
 # ------------------------------------------------------------
-#  Sidebar navigation (no dark-mode, no selector)
+#  Sidebar navigation
 # ------------------------------------------------------------
 st.sidebar.title("🛠️ IDS Pro")
 page = st.sidebar.radio("", ["📊 Dashboard", "📤 Upload", "ℹ️ About"], label_visibility="collapsed")
@@ -99,6 +96,15 @@ elif page == "📤 Upload":
     if submit and uploaded_file:
         try:
             df = pd.read_csv(uploaded_file)
+
+            # Ensure attack_category column exists (fallback if missing)
+            if "attack_category" not in df.columns:
+                df["attack_category"] = np.where(
+                    df.get("label", "normal") == "normal",
+                    "normal",
+                    df.get("label", "attack"),
+                )
+
             missing = [c for c in EXPECTED_FEATURES if c not in df.columns]
             if missing:
                 st.error(f"Missing columns: {missing}")
@@ -122,6 +128,7 @@ elif page == "📤 Upload":
                 else np.nan * np.ones_like(preds)
             )
 
+            # Enrich with predictions
             enriched = df.assign(
                 Predicted_Label=np.where(preds == 0, "normal", "attack"),
                 Predicted_Label_Num=preds,
@@ -141,15 +148,24 @@ else:
         st.info("No data uploaded yet. Go to Upload page first.")
         st.stop()
 
-    # --- Sidebar filters (only when Dashboard is active) ---
+    # --- Sidebar filters ---
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filters")
     data_name = st.sidebar.selectbox("Dataset", list(st.session_state.history.keys()))
     df = st.session_state.history[data_name]
 
-    attack_filter = st.sidebar.multiselect(
-        "Attack type", ["normal", "attack"], default=["normal", "attack"]
+    # Build attack list with categories
+    attack_list = (
+        df[df["Predicted_Label"] == "attack"]["attack_category"]
+        .dropna()
+        .unique()
+        .tolist()
     )
+    attack_type_options = ["normal"] + attack_list
+    attack_filter = st.sidebar.multiselect(
+        "Attack type", attack_type_options, default=attack_type_options
+    )
+
     proto_filter = st.sidebar.multiselect(
         "Protocol", df["protocol_type"].unique(), df["protocol_type"].unique()
     )
@@ -162,10 +178,15 @@ else:
 
     # Apply filters
     filtered = df[
-        (df["Predicted_Label"].isin(attack_filter))
+        (df["Predicted_Label"].isin(["normal", "attack"]))
         & (df["protocol_type"].isin(proto_filter))
         & (df["service"].isin(service_filter))
     ]
+    if attack_filter != attack_type_options:
+        filtered = filtered[
+            (filtered["Predicted_Label"] == "normal")
+            | (filtered["attack_category"].isin(attack_filter))
+        ]
     if search:
         mask = (
             filtered.astype(str)
@@ -221,7 +242,7 @@ else:
         )
         st.plotly_chart(bar, use_container_width=True)
 
-     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
     #  LIVE INTRUSION FLUCTUATION  (with Pause/Resume)
     # ------------------------------------------------------------------
     if live_plot_toggle:
@@ -235,7 +256,7 @@ else:
         with col_pause:
             if st.button("⏸️ Pause" if not st.session_state.live_paused else "▶️ Resume"):
                 st.session_state.live_paused = not st.session_state.live_paused
-                st.rerun()   # force redraw with new state
+                st.rerun()  # force redraw with new state
 
         live_plot = st.empty()
         window_size = 20
@@ -262,15 +283,18 @@ else:
                     )
                 )
 
-            # Hover text
+            # Hover text with attack category
             hover_text = [
                 f"Connection {idx}<br>"
                 f"Status: {'Attack' if y==1 else 'Normal'}<br>"
+                f"Category: {row.attack_category}<br>"
                 f"Protocol: {row.protocol_type}"
-                for idx, (y, row) in enumerate(zip(
-                    window_data['Predicted_Label_Num'],
-                    window_data.itertuples(index=False)
-                ))
+                for idx, (y, row) in enumerate(
+                    zip(
+                        window_data["Predicted_Label_Num"],
+                        window_data.itertuples(index=False),
+                    )
+                )
             ]
 
             fig.add_trace(
@@ -280,7 +304,10 @@ else:
                     mode="markers",
                     marker=dict(
                         size=8,
-                        color=["red" if x == 1 else "green" for x in window_data["Predicted_Label_Num"]],
+                        color=[
+                            "red" if x == 1 else "green"
+                            for x in window_data["Predicted_Label_Num"]
+                        ],
                         line=dict(width=1, color="DarkSlateGrey"),
                     ),
                     text=hover_text,
@@ -319,15 +346,18 @@ else:
                         )
                     )
 
-                # Hover text
+                # Hover text with attack category
                 hover_text = [
                     f"Connection {idx}<br>"
                     f"Status: {'Attack' if y==1 else 'Normal'}<br>"
+                    f"Category: {row.attack_category}<br>"
                     f"Protocol: {row.protocol_type}"
-                    for idx, (y, row) in enumerate(zip(
-                        window_data['Predicted_Label_Num'],
-                        window_data.itertuples(index=False)
-                    ))
+                    for idx, (y, row) in enumerate(
+                        zip(
+                            window_data["Predicted_Label_Num"],
+                            window_data.itertuples(index=False),
+                        )
+                    )
                 ]
 
                 fig.add_trace(
@@ -337,7 +367,10 @@ else:
                         mode="markers",
                         marker=dict(
                             size=8,
-                            color=["red" if x == 1 else "green" for x in window_data["Predicted_Label_Num"]],
+                            color=[
+                                "red" if x == 1 else "green"
+                                for x in window_data["Predicted_Label_Num"]
+                            ],
                             line=dict(width=1, color="DarkSlateGrey"),
                         ),
                         text=hover_text,
@@ -354,6 +387,7 @@ else:
                 )
                 live_plot.plotly_chart(fig, use_container_width=True)
                 sleep(0.5)
+
     # 4) Interactive duration histogram
     st.subheader("Connection Duration (interactive)")
     hist = px.histogram(
