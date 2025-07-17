@@ -86,33 +86,44 @@ if page == "ℹ️ About":
     )
 
 # ------------------------------------------------------------
-#  UPLOAD PAGE
+#  UPLOAD PAGE  (handles *any* CSV layout)
 # ------------------------------------------------------------
 elif page == "📤 Upload":
     st.header("📤 Upload New Data")
     with st.form("upload_form"):
         uploaded_file = st.file_uploader("Choose a CSV file", type=["csv"])
         submit = st.form_submit_button("Upload & Process")
+
     if submit and uploaded_file:
         try:
             df = pd.read_csv(uploaded_file)
 
-            # ------- NEW SAFEGUARD -------
-            if "attack_category" not in df.columns:
-                # create a fallback based on the optional `label` column, else "unknown"
-                df["attack_category"] = np.where(
-                    df.get("label", "normal") == "normal",
-                    "normal",
-                    df.get("label", "unknown"),
-                )
-            # ------------------------------
+            # 1) --- Build attack_category safely ------------------
+            if "attack_category" in df.columns:
+                # already exists → do nothing
+                pass
+            elif "Label" in df.columns:
+                df["attack_category"] = df["Label"].astype(str).str.lower()
+            elif "label" in df.columns:
+                df["attack_category"] = df["label"].astype(str).str.lower()
+            else:
+                # fallback for files without any label
+                df["attack_category"] = "unknown"
 
+            # make sure the binary prediction column exists for later joins
+            df["label"] = df["attack_category"].apply(
+                lambda x: "normal" if str(x).lower() == "normal" else "attack"
+            )
+            # -----------------------------------------------------
+
+            # 2) --- Basic sanity check on feature names -----------
             missing = [c for c in EXPECTED_FEATURES if c not in df.columns]
             if missing:
-                st.error(f"Missing columns: {missing}")
+                st.error(f"Missing expected features: {missing}")
                 st.stop()
+            # -----------------------------------------------------
 
-            # Encode categoricals
+            # 3) --- Encode categorical columns --------------------
             df_proc = df[EXPECTED_FEATURES].copy()
             for col in ["protocol_type", "service", "flag"]:
                 if col in label_encoders:
@@ -121,7 +132,9 @@ elif page == "📤 Upload":
                         lambda x: x if x in le.classes_ else "unknown"
                     )
                     df_proc[col] = le.transform(df_proc[col])
+            # -----------------------------------------------------
 
+            # 4) --- Scale & predict -------------------------------
             X = scaler.transform(df_proc)
             preds = model.predict(X)
             proba = (
@@ -129,7 +142,9 @@ elif page == "📤 Upload":
                 if hasattr(model, "predict_proba")
                 else np.nan * np.ones_like(preds)
             )
+            # -----------------------------------------------------
 
+            # 5) --- Enrich & store -------------------------------
             enriched = df.assign(
                 Predicted_Label=np.where(preds == 0, "normal", "attack"),
                 Predicted_Label_Num=preds,
@@ -137,6 +152,7 @@ elif page == "📤 Upload":
             )
             st.session_state.history[uploaded_file.name] = enriched
             st.success("File processed successfully!")
+
         except Exception as e:
             st.exception(e)
 # ------------------------------------------------------------
