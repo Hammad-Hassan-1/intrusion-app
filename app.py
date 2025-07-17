@@ -11,7 +11,7 @@ from time import sleep
 # ------------------------------------------------------------
 st.set_page_config(
     page_title="IDS Pro",
-    page_icon="🛡️",
+    page_icon="🛡",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -67,17 +67,17 @@ if "history" not in st.session_state:
 # ------------------------------------------------------------
 #  Sidebar navigation
 # ------------------------------------------------------------
-st.sidebar.title("🛠️ IDS Pro")
-page = st.sidebar.radio("", ["📊 Dashboard", "📤 Upload", "ℹ️ About"], label_visibility="collapsed")
+st.sidebar.title("🛠 IDS Pro")
+page = st.sidebar.radio("", ["📊 Dashboard", "📤 Upload", "ℹ About"], label_visibility="collapsed")
 
 # ------------------------------------------------------------
 #  ABOUT PAGE
 # ------------------------------------------------------------
-if page == "ℹ️ About":
+if page == "ℹ About":
     st.header("About IDS Pro")
     st.markdown(
         """
-    **IDS Pro** is a modern, real-time intrusion-detection analytics platform.
+    *IDS Pro* is a modern, real-time intrusion-detection analytics platform.
 
     - Built with Python, Streamlit & Scikit-learn  
     - Supports live traffic simulation, rich visualizations and downloadable reports  
@@ -86,44 +86,33 @@ if page == "ℹ️ About":
     )
 
 # ------------------------------------------------------------
-#  UPLOAD PAGE  (handles *any* CSV layout)
+#  UPLOAD PAGE
 # ------------------------------------------------------------
 elif page == "📤 Upload":
     st.header("📤 Upload New Data")
     with st.form("upload_form"):
         uploaded_file = st.file_uploader("Choose a CSV file", type=["csv"])
         submit = st.form_submit_button("Upload & Process")
-
     if submit and uploaded_file:
         try:
             df = pd.read_csv(uploaded_file)
 
-            # 1) --- Build attack_category safely ------------------
-            if "attack_category" in df.columns:
-                # already exists → do nothing
-                pass
-            elif "Label" in df.columns:
-                df["attack_category"] = df["Label"].astype(str).str.lower()
-            elif "label" in df.columns:
-                df["attack_category"] = df["label"].astype(str).str.lower()
-            else:
-                # fallback for files without any label
-                df["attack_category"] = "unknown"
+            # ------- NEW SAFEGUARD -------
+            if "attack_category" not in df.columns:
+                # create a fallback based on the optional label column, else "unknown"
+                df["attack_category"] = np.where(
+                    df.get("label", "normal") == "normal",
+                    "normal",
+                    df.get("label", "unknown"),
+                )
+            # ------------------------------
 
-            # make sure the binary prediction column exists for later joins
-            df["label"] = df["attack_category"].apply(
-                lambda x: "normal" if str(x).lower() == "normal" else "attack"
-            )
-            # -----------------------------------------------------
-
-            # 2) --- Basic sanity check on feature names -----------
             missing = [c for c in EXPECTED_FEATURES if c not in df.columns]
             if missing:
-                st.error(f"Missing expected features: {missing}")
+                st.error(f"Missing columns: {missing}")
                 st.stop()
-            # -----------------------------------------------------
 
-            # 3) --- Encode categorical columns --------------------
+            # Encode categoricals
             df_proc = df[EXPECTED_FEATURES].copy()
             for col in ["protocol_type", "service", "flag"]:
                 if col in label_encoders:
@@ -132,9 +121,7 @@ elif page == "📤 Upload":
                         lambda x: x if x in le.classes_ else "unknown"
                     )
                     df_proc[col] = le.transform(df_proc[col])
-            # -----------------------------------------------------
 
-            # 4) --- Scale & predict -------------------------------
             X = scaler.transform(df_proc)
             preds = model.predict(X)
             proba = (
@@ -142,9 +129,7 @@ elif page == "📤 Upload":
                 if hasattr(model, "predict_proba")
                 else np.nan * np.ones_like(preds)
             )
-            # -----------------------------------------------------
 
-            # 5) --- Enrich & store -------------------------------
             enriched = df.assign(
                 Predicted_Label=np.where(preds == 0, "normal", "attack"),
                 Predicted_Label_Num=preds,
@@ -152,7 +137,6 @@ elif page == "📤 Upload":
             )
             st.session_state.history[uploaded_file.name] = enriched
             st.success("File processed successfully!")
-
         except Exception as e:
             st.exception(e)
 # ------------------------------------------------------------
@@ -219,7 +203,7 @@ else:
     kpi2.metric("Attack rate", f"{(filtered['Predicted_Label_Num'].mean()*100):.1f}%")
     kpi3.metric("Dataset", data_name)
     if filtered["Predicted_Label_Num"].mean() > 0.5:
-        st.warning("⚠️ High attack rate detected!")
+        st.warning("⚠ High attack rate detected!")
 
     # ------------------------------------------------------------
     #  PLOTS
@@ -270,7 +254,7 @@ else:
 
         col_pause, _ = st.columns([1, 5])
         with col_pause:
-            if st.button("⏸️ Pause" if not st.session_state.live_paused else "▶️ Resume"):
+            if st.button("⏸ Pause" if not st.session_state.live_paused else "▶ Resume"):
                 st.session_state.live_paused = not st.session_state.live_paused
                 st.rerun()  # force redraw with new state
 
@@ -458,7 +442,7 @@ else:
     # ------------------------------------------------------------
     csv = filtered.to_csv(index=False)
     st.sidebar.download_button(
-        "⬇️ Download filtered CSV",
+        "⬇ Download filtered CSV",
         data=csv,
         file_name="alerts.csv",
         mime="text/csv",
