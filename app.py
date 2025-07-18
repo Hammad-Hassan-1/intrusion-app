@@ -227,9 +227,6 @@ else:
         .tolist()
     )
     attack_type_options = ["normal"] + attack_list
-    attack_filter = st.sidebar.multiselect(
-        "Attack type", attack_type_options, default=attack_type_options
-    )
 
     proto_filter = st.sidebar.multiselect(
         "Protocol", df["protocol_type"].unique(), df["protocol_type"].unique()
