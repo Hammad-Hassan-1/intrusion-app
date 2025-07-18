@@ -244,11 +244,11 @@ else:
         & (df["service"].isin(service_filter))
     ]
     
-    if attack_filter != attack_type_options:
-        filtered = filtered[
-            (filtered["Predicted_Label"] == "normal")
-            | (filtered["attack_category"].isin(attack_filter))
-        ]
+    # if attack_filter != attack_type_options:
+    #     filtered = filtered[
+    #         (filtered["Predicted_Label"] == "normal")
+    #         | (filtered["attack_category"].isin(attack_filter))
+    #     ]
     if search:
         mask = (
             filtered.astype(str)
