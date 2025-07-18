@@ -239,10 +239,10 @@ else:
     live_plot_toggle = st.sidebar.checkbox("Live intrusion plot")
 
     # Apply filters
-filtered = df[
-    (df["protocol_type"].isin(proto_filter))
-    & (df["service"].isin(service_filter))
-]
+    filtered = df[
+        (df["protocol_type"].isin(proto_filter))
+        & (df["service"].isin(service_filter))
+    ]
     
     if attack_filter != attack_type_options:
         filtered = filtered[
